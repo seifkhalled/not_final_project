@@ -97,12 +97,18 @@ def build_chroma_db():
     secrets=[modal.Secret.from_name("egypt-trip-planner-secrets")],
 )
 @modal.concurrent(max_inputs=100)
-@modal.web_server(8000)
+@modal.web_server(8000, startup_timeout=120)
 def run():
     import os
+    import sys
+    import threading
 
-    os.environ["CHROMA_PATH"] = CHROMA_DB_REMOTE
+    sys.path.insert(0, REMOTE_DIR)
 
+    # Point ChromaDB to the persistent volume
+    os.environ["CHROMA_PATH"] = f"{CHROMA_DB_REMOTE}/travel_chroma_db"
+
+    # Patch vector_search.py to use the volume path
     vector_search_path = f"{REMOTE_DIR}/src/vector_search.py"
     with open(vector_search_path, "r") as f:
         content = f.read()
@@ -113,5 +119,12 @@ def run():
     with open(vector_search_path, "w") as f:
         f.write(content)
 
-    cmd = f"cd {REMOTE_DIR} && python api_server.py --host 0.0.0.0 --port 8000"
-    subprocess.Popen(cmd, shell=True)
+    # Import the Flask app directly and run in a thread
+    # This is the reliable way — subprocess shell=True with && fails silently in containers
+    from api_server import app as flask_app
+
+    def serve():
+        flask_app.run(host="0.0.0.0", port=8000, debug=False)
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
