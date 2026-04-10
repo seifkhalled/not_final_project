@@ -5,6 +5,10 @@ from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 import ast
 import os
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ==============================
 # CONFIG
@@ -33,6 +37,25 @@ print(f"Reading data from: {DATA_DIR}")
 hotels = pd.read_csv(os.path.join(DATA_DIR, "hotels.csv"))
 restaurants = pd.read_csv(os.path.join(DATA_DIR, "restaurants.csv"))
 places = pd.read_csv(os.path.join(DATA_DIR, "places.csv"))
+
+# ==============================
+# COLUMN VALIDATION
+# ==============================
+
+_REQUIRED_HOTEL_COLS = ['id', 'Hotel Name', 'city', 'Price', 'Review Score (/10)']
+for col in _REQUIRED_HOTEL_COLS:
+    if col not in hotels.columns:
+        raise ValueError(f"Missing required column '{col}' in hotels.csv")
+
+_REQUIRED_RESTAURANT_COLS = ['id', 'Restaurant', 'city', 'Cuisines', 'Avg_Price']
+for col in _REQUIRED_RESTAURANT_COLS:
+    if col not in restaurants.columns:
+        raise ValueError(f"Missing required column '{col}' in restaurants.csv")
+
+_REQUIRED_PLACE_COLS = ['id', 'Title', 'City', 'Rating', 'Ticket Price']
+for col in _REQUIRED_PLACE_COLS:
+    if col not in places.columns:
+        raise ValueError(f"Missing required column '{col}' in places.csv")
 
 print(f"Loaded: {len(hotels)} hotels, {len(restaurants)} restaurants, {len(places)} places")
 
@@ -156,8 +179,8 @@ client = chromadb.PersistentClient(path=CHROMA_PATH)
 # Delete collection if exists, then create
 try:
     client.delete_collection("travel")
-except:
-    pass
+except Exception as e:
+    logger.warning(f"Could not delete collection: {e}")
 
 collection = client.create_collection(
     name="travel",

@@ -1,5 +1,6 @@
 import os
 import json
+from datetime import datetime
 from dotenv import load_dotenv
 from tavily import TavilyClient
 
@@ -30,7 +31,7 @@ TOOL_DEFINITION = {
                     "type": "string",
                     "description": (
                         "Specific search query, e.g. "
-                        "'Pyramids of Giza ticket price 2026' or "
+                        f"'Pyramids of Giza ticket price {datetime.now().year}' or "
                         "'izoya restaurant Alexandria Egypt'"
                     ),
                 },
@@ -83,20 +84,16 @@ def execute_tool_call(tool_call) -> str:
         return json.dumps({"error": "Invalid JSON arguments"})
 
     query = args.get("query", "")
-    destinations = args.get("destinations", [])
 
-    search_queries = [query]
-    for dest in destinations[:2]:
-        search_queries.append(f"{dest} Egypt travel tips 2026")
-
+    # Only search for what the user actually asked — no generic filler queries
     all_results = []
-    for q in search_queries[:3]:
-        results = tavily_search(q, max_results=3)
-        all_results.extend(results)
+    results = tavily_search(query, max_results=5)
+    all_results.extend(results)
 
     if not all_results:
         return json.dumps({"error": "No results found", "query": query})
 
+    destinations = args.get("destinations", [])
     formatted = []
     for r in all_results:
         formatted.append({
@@ -114,6 +111,7 @@ def execute_tool_call(tool_call) -> str:
 
 
 def format_tavily_results(results: list[dict]) -> str:
+    """Format Tavily results as markdown context. No HTTP side effects."""
     if not results:
         return ""
 
@@ -125,11 +123,14 @@ def format_tavily_results(results: list[dict]) -> str:
             continue
         seen_titles.add(title)
         snippet = r.get("content", r.get("snippet", ""))
+        url = r.get("url", "")
+
         lines.append(f"- **{title}**")
         if snippet:
             lines.append(f"  {snippet[:250]}")
-        if r.get("url"):
-            lines.append(f"  Source: {r['url']}")
+        if url:
+            lines.append(f"  Source: {url}")
+
     lines.append("")
     return "\n".join(lines)
 
@@ -140,6 +141,7 @@ def search_destinations_proactive(
     must_visit: str = "",
     food_preferences: str = "",
 ) -> list[dict]:
+    year = datetime.now().year
     queries = []
 
     if must_visit:
@@ -147,15 +149,15 @@ def search_destinations_proactive(
             place = place.strip()
             if place:
                 dest = destinations[0] if destinations else "Egypt"
-                queries.append(f"{place} {dest} Egypt review location 2026")
+                queries.append(f"{place} {dest} Egypt review location {year}")
 
     for dest in destinations[:2]:
-        queries.append(f"{dest} Egypt top attractions ticket prices 2026")
+        queries.append(f"{dest} Egypt top attractions ticket prices {year}")
         if "Food & Dining" in travel_styles:
             pref = food_preferences if food_preferences != "No Preference" else ""
-            queries.append(f"best {pref} restaurants {dest} Egypt 2026".strip())
+            queries.append(f"best {pref} restaurants {dest} Egypt {year}".strip())
         if "Historical" in travel_styles:
-            queries.append(f"{dest} historical sites opening hours 2026")
+            queries.append(f"{dest} historical sites opening hours {year}")
 
     all_results = []
     seen = set()

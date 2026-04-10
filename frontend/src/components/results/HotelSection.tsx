@@ -32,7 +32,10 @@ export function HotelSection({ hotels }: HotelSectionProps) {
               <div className="absolute inset-0 bg-charcoal-lighter animate-pulse" />
             )}
             <img
-              src={`https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80`}
+              src={
+                featuredHotel.imageUrl ||
+                `https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80`
+              }
               alt={featuredHotel.name}
               className={`w-full h-full object-cover ${
                 imageLoaded[0] ? 'opacity-100' : 'opacity-0'

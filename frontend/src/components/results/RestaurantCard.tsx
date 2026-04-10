@@ -13,6 +13,10 @@ interface RestaurantCardProps {
 export function RestaurantCard({ restaurant, index }: RestaurantCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
 
+  const imageUrl =
+    restaurant.imageUrl ||
+    `https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&q=80`;
+
   const cuisineTags = restaurant.cuisines
     ? restaurant.cuisines.split(',').map((c) => c.trim())
     : [];
@@ -31,7 +35,7 @@ export function RestaurantCard({ restaurant, index }: RestaurantCardProps) {
           <div className="absolute inset-0 bg-charcoal-lighter animate-pulse" />
         )}
         <img
-          src={`https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&q=80`}
+          src={imageUrl}
           alt={restaurant.name}
           className={`w-full h-40 object-cover transition-all duration-500 group-hover:scale-110 ${
             imageLoaded ? 'opacity-100' : 'opacity-0'

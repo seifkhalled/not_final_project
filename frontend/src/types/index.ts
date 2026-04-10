@@ -14,6 +14,8 @@ export interface TripInput {
   foodPreferences: string;
   tripPace: string;
   mustVisit: string;
+  model?: string;
+  provider?: string;
 }
 
 export interface Place {
@@ -25,6 +27,7 @@ export interface Place {
   description?: string;
   city?: string;
   image?: string;
+  imageUrl?: string;
 }
 
 export interface Restaurant {
@@ -35,6 +38,7 @@ export interface Restaurant {
   description?: string;
   city?: string;
   image?: string;
+  imageUrl?: string;
 }
 
 export interface Hotel {
@@ -45,6 +49,7 @@ export interface Hotel {
   description?: string;
   city?: string;
   image?: string;
+  imageUrl?: string;
 }
 
 export interface TripResult {

@@ -162,6 +162,8 @@ export default function Home() {
         foodPreferences: input.foodPreferences || 'Vegetarian',
         tripPace: input.tripPace || 'Moderate',
         mustVisit: input.mustVisit || 'Pyramids',
+        model: input.model,
+        provider: input.provider,
       };
 
       const tripResult = await generateTrip(tripInput);

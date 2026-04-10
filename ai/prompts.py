@@ -1,12 +1,4 @@
 class SystemPrompts:
-    TRIP_PLANNER = (
-        "You are an expert travel planner specializing in Egypt tourism. "
-        "You create detailed, practical trip plans using the provided database results. "
-        "You can respond in English or Arabic depending on the user's preference. "
-        "Always be specific with place names, prices, and timing. "
-        "Format your response in clear markdown."
-    )
-
     SUMMARY = (
         "You are a travel expert. Give a concise, engaging summary."
     )
@@ -48,12 +40,12 @@ Brief summary of the trip highlighting key experiences.
 
 ## Day-by-Day Itinerary
 For each day include:
-- **Morning**: Activity with specific place name, estimated time, and ticket price
-- **Lunch**: Restaurant recommendation with cuisine type and estimated cost
-- **Afternoon**: Activity with specific place name and details
-- **Dinner**: Restaurant recommendation
-- **Transportation**: How to get between locations
-- **Estimated Daily Cost**: Breakdown in EGP
+- Morning: Activity, time, price
+- Lunch: Restaurant, cuisine, cost
+- Afternoon: Activity with details
+- Dinner: Restaurant recommendation
+- Transportation: Routes between locations
+- Daily Cost: EGP breakdown
 
 ## Accommodation Recommendation
 Recommend the best hotel from the results with reasoning.

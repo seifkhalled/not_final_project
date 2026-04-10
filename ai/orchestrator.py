@@ -4,17 +4,16 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ai.config import AIConfig
-from ai.client import GroqClient, LLMResponse
+from ai.client import LLMClient, LLMResponse
 from ai.prompts import SystemPrompts
 from src.trip_planner import (
     generate_trip_plan as _generate_trip_plan,
-    generate_short_summary as _generate_short_summary,
 )
 
 
 class TripOrchestrator:
     def __init__(self):
-        self.client = GroqClient()
+        self.client = LLMClient()
         self.last_summary_tokens = None
         self.last_trip_plan_tokens = None
 
@@ -36,7 +35,9 @@ class TripOrchestrator:
                 if meta.get("timings"):
                     lines.append(f"  Hours: {meta['timings']}")
                 if p.get("document"):
-                    lines.append(f"  Info: {p['document'][:200]}")
+                    doc = p['document']
+                    truncated = doc[:200] + ('...' if len(doc) > 200 else '')
+                    lines.append(f"  Info: {truncated}")
             lines.append("")
 
         if restaurants:
@@ -67,10 +68,16 @@ class TripOrchestrator:
 
         return "\n".join(lines) if lines else "No specific results found."
 
-    def generate_summary(self, places, restaurants, hotels, destinations):
+    def generate_summary(self, places, restaurants, hotels, destinations, model=None, provider=None):
         context = self.format_search_results(places, restaurants, hotels)
         prompt = SystemPrompts.summary_prompt(destinations, context)
-        result: LLMResponse = self.client.chat(SystemPrompts.SUMMARY, prompt, max_tokens=AIConfig.LLM_SUMMARY_MAX_TOKENS)
+        result: LLMResponse = self.client.chat(
+            SystemPrompts.SUMMARY, 
+            prompt, 
+            max_tokens=AIConfig.LLM_SUMMARY_MAX_TOKEMENT_TOKENS,
+            model=model,
+            provider=provider
+        )
         self.last_summary_tokens = result
         return result.content
 
@@ -81,8 +88,9 @@ class TripOrchestrator:
         museum_visits, water_activities, accommodation_type,
         transportation, food_preferences, trip_pace, must_visit,
         places, restaurants, hotels,
+        model=None, provider=None
     ):
-        content = _generate_trip_plan(
+        result = _generate_trip_plan(
             destinations=destinations,
             budget=budget,
             group_size=group_size,
@@ -101,5 +109,8 @@ class TripOrchestrator:
             places_results=places,
             restaurants_results=restaurants,
             hotels_results=hotels,
+            model=model,
+            provider=provider
         )
-        return content
+        self.last_trip_plan_tokens = result
+        return result.content if hasattr(result, 'content') else result

@@ -2,7 +2,7 @@ import os
 import re
 import json
 from dotenv import load_dotenv
-from groq import Groq
+from openai import OpenAI
 from datetime import datetime
 
 from src.search_tools import (
@@ -11,28 +11,63 @@ from src.search_tools import (
     format_tavily_results,
     search_destinations_proactive,
 )
+from src.pexels_service import fetch_pexels_photos, get_place_image_url
+from src.utils import clean_name, truncate_context, safe_llm_call
 
 load_dotenv()
 
+# OpenRouter configuration
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+# Groq configuration
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
-# ✅ Use llama for BOTH tool calling AND final generation (allam hits token limits)
-LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
-TOOL_CALL_MODEL = os.getenv("TOOL_CALL_MODEL", "llama-3.1-8b-instant")
+# Separate env vars for trip generation vs. tool calling models
+LLM_MODEL = os.getenv("OPENROUTER_TRIP_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free")
+TOOL_CALL_MODEL = os.getenv("OPENROUTER_TOOL_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free")
 
-client = Groq(api_key=GROQ_API_KEY)
+# Fallback model lists per provider
+_OPENROUTER_FALLBACK_MODELS = [
+    LLM_MODEL,
+    "google/gemma-3-12b-it:free",
+    "deepseek/deepseek-r1-distill-llama-70b:free",
+    "meta-llama/llama-4-scout:free",
+]
+
+_GROQ_FALLBACK_MODELS = [
+    os.getenv("LLM_MODEL", "llama-3.1-8b-instant"),
+    "llama-3.3-70b-versatile",
+]
+
+# ==============================
+# LAZY CLIENT INITIALIZER
+# ==============================
+
+_clients: dict = {}
+
+
+def get_client(provider: str = "openrouter") -> OpenAI:
+    """Return a provider-specific OpenAI-compatible client, creating it on first call."""
+    global _clients
+    if provider not in _clients:
+        if provider == "groq":
+            _clients["groq"] = OpenAI(
+                base_url=GROQ_BASE_URL,
+                api_key=GROQ_API_KEY,
+            )
+        else:
+            _clients["openrouter"] = OpenAI(
+                base_url=OPENROUTER_BASE_URL,
+                api_key=OPENROUTER_API_KEY,
+            )
+    return _clients[provider]
 
 
 # ==============================
 # DEDUPLICATE + CLEAN RESULTS
 # ==============================
-
-def clean_name(name: str) -> str:
-    """Remove ' - Section X' suffixes from chunked document names."""
-    if not name:
-        return name
-    return re.sub(r'\s*-?\s*section\s*\d+$', '', name, flags=re.IGNORECASE).strip()
-
 
 def deduplicate_results(items: list[dict]) -> list[dict]:
     """Keep only the first occurrence of each unique place/restaurant/hotel."""
@@ -43,7 +78,6 @@ def deduplicate_results(items: list[dict]) -> list[dict]:
         base_name = clean_name(raw_name)
         if base_name and base_name not in seen:
             seen.add(base_name)
-            # Clean the name in the item itself
             item["name"] = base_name
             if "metadata" in item and item["metadata"].get("name"):
                 item["metadata"]["name"] = base_name
@@ -56,6 +90,7 @@ def deduplicate_results(items: list[dict]) -> list[dict]:
 # ==============================
 
 def format_search_results(places, restaurants, hotels):
+    """Format DB results into a compact markdown string. No HTTP calls."""
     lines = []
 
     if places:
@@ -107,7 +142,6 @@ def format_search_results(places, restaurants, hotels):
             meta = h.get("metadata", {})
             name = clean_name(h.get("name") or meta.get("name", "Unknown"))
             city = h.get("city", meta.get("city", ""))
-            # Hotels use rating out of 10
             rating = meta.get("rating", meta.get("stars", "N/A"))
             price = meta.get("price", meta.get("price_per_night", ""))
             dist = meta.get("distance_km", "")
@@ -126,6 +160,26 @@ def format_search_results(places, restaurants, hotels):
 
 
 # ==============================
+# OPTIONAL: ENRICH ITEMS WITH IMAGES
+# ==============================
+
+def enrich_with_images(items: list[dict]) -> list[dict]:
+    """
+    Fetch a Pexels image URL for each item and store it under item['image_url'].
+    Call this AFTER format_search_results() only when images are needed.
+    """
+    for item in items:
+        meta = item.get("metadata", {})
+        name = item.get("name") or meta.get("name", "")
+        city = item.get("city", meta.get("city", ""))
+        try:
+            item["image_url"] = get_place_image_url(name, city)
+        except Exception:
+            item["image_url"] = None
+    return items
+
+
+# ==============================
 # PHASE 1: TOOL CALLING (let model decide what to search)
 # ==============================
 
@@ -136,6 +190,7 @@ def run_tool_calling_phase(
     transportation, food_preferences, trip_pace, must_visit,
     db_context,
 ):
+    client = get_client()
     num_days = max(1, (end_date - start_date).days + 1)
 
     system_msg = (
@@ -219,7 +274,10 @@ def generate_trip_plan(
     museum_visits, water_activities, accommodation_type,
     transportation, food_preferences, trip_pace, must_visit,
     places_results, restaurants_results, hotels_results,
+    model=None, provider=None,
 ):
+    provider = provider or "openrouter"
+    client = get_client(provider)
     num_days = max(1, (end_date - start_date).days + 1)
 
     budget_raw = budget
@@ -228,7 +286,7 @@ def generate_trip_plan(
         cleaned = budget.replace(" EGP", "").replace("+", "-99999")
         try:
             parts = cleaned.split("-")
-            budget_max = int(parts[-1])
+            budget_max = int(parts[-1].strip())
         except (ValueError, IndexError):
             pass
 
@@ -267,6 +325,9 @@ def generate_trip_plan(
         print(f"[Phase 2] Using DB + {len(tavily_results)} web results")
     else:
         print("[Phase 2] Using DB only (no web results)")
+
+    # Truncate combined context to prevent LLM context overflow
+    combined_context = truncate_context(combined_context, max_chars=25000)
 
     # Build must-visit enforcement string
     must_visit_block = ""
@@ -349,20 +410,36 @@ Price: X EGP/night × {num_days} nights = X EGP total
 ## 💡 Tips
 - 3-4 practical tips for this specific trip"""
 
-    response = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    # Build models to try based on provider and user choice
+    if provider == "groq":
+        fallbacks = _GROQ_FALLBACK_MODELS
+    else:
+        fallbacks = _OPENROUTER_FALLBACK_MODELS
+
+    if model and model not in fallbacks:
+        models_to_try = [model] + fallbacks
+    else:
+        models_to_try = fallbacks if not model else [model] + [m for m in fallbacks if m != model]
+
+    print(f"[Phase 2] Generating trip plan with {models_to_try[0]} (provider: {provider})...")
+
+    result = safe_llm_call(
+        client=client,
+        models=models_to_try,
+        messages=messages,
         temperature=0.6,
-        max_tokens=2500,  # Controlled to stay within limits
+        max_tokens=2500,
     )
 
-    usage = response.usage
-    print(f"\n[Phase 2] Tokens — Input: {usage.prompt_tokens} | Output: {usage.completion_tokens} | Total: {usage.total_tokens}")
+    if result is None:
+        raise Exception("All models rate-limited. Please try again later.")
 
-    return response.choices[0].message.content
+    return result
 
 
 # ==============================
@@ -370,22 +447,29 @@ Price: X EGP/night × {num_days} nights = X EGP total
 # ==============================
 
 def generate_short_summary(places_results, restaurants_results, hotels_results, destinations):
+    client = get_client("openrouter")
     context = format_search_results(places_results, restaurants_results, hotels_results)
 
-    response = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a travel expert. Give a concise 2-3 sentence summary.",
-            },
-            {
-                "role": "user",
-                "content": f"Summarize what travelers can expect in {', '.join(destinations)}, Egypt based on:\n{context}",
-            },
-        ],
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a travel expert. Give a concise 2-3 sentence summary.",
+        },
+        {
+            "role": "user",
+            "content": f"Summarize what travelers can expect in {', '.join(destinations)}, Egypt based on:\n{context}",
+        },
+    ]
+
+    result = safe_llm_call(
+        client=client,
+        models=_OPENROUTER_FALLBACK_MODELS,
+        messages=messages,
         temperature=0.7,
         max_tokens=200,
     )
 
-    return response.choices[0].message.content
+    if result is None:
+        raise Exception("All models rate-limited. Please try again later.")
+
+    return result

@@ -18,6 +18,8 @@ const defaultInput: Partial<TripInput> = {
   foodPreferences: 'Vegetarian',
   tripPace: 'Moderate',
   mustVisit: 'Pyramids',
+  model: 'nvidia/nemotron-3-nano-30b-a3b:free',
+  provider: 'openrouter',
 };
 
 export const useTripStore = create<TripState>()(

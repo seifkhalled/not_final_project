@@ -1,7 +1,8 @@
 import chromadb
 from sentence_transformers import SentenceTransformer
 import os
-import re
+
+from src.utils import clean_name
 
 # ==============================
 # CONFIG
@@ -20,16 +21,6 @@ collection = client.get_collection("travel")
 print(f"Loading embedding model: {EMBEDDING_MODEL}...")
 model = SentenceTransformer(EMBEDDING_MODEL, trust_remote_code=True)
 print("Ready.")
-
-
-# ==============================
-# CLEAN NAME (remove chunk suffixes)
-# ==============================
-
-def clean_name(name):
-    name = re.sub(r'\s*-?\s*section\s*\d+$', '', name, flags=re.IGNORECASE).strip()
-    name = re.sub(r'\s+\d+$', '', name).strip()
-    return name
 
 
 # ==============================
@@ -130,21 +121,6 @@ def search(
         if dedup_key in seen_names:
             continue
         seen_names.add(dedup_key)
-
-        if min_price is not None:
-            price_val = meta.get("price") or meta.get("avg_price")
-            if price_val is not None and price_val < min_price:
-                continue
-
-        if max_price is not None:
-            price_val = meta.get("price") or meta.get("avg_price")
-            if price_val is not None and price_val > max_price:
-                continue
-
-        if min_rating is not None:
-            rating_val = meta.get("rating")
-            if rating_val is not None and rating_val < min_rating:
-                continue
 
         items.append({
             "score": round(score, 4),

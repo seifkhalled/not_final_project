@@ -15,8 +15,9 @@ export function PlaceCard({ place, index }: PlaceCardProps) {
   const { toggleFavorite, isFavorite } = useTripStore();
   const [imageLoaded, setImageLoaded] = useState(false);
 
-  const searchQuery = encodeURIComponent(`${place.name} Egypt`);
-  const imageUrl = `https://source.unsplash.com/600x400/?${searchQuery}`;
+  const imageUrl =
+    place.imageUrl ||
+    `https://images.unsplash.com/photo-1539650116574-8efeb43e2750?w=600&q=80`;
 
   const rating = place.rating ? parseFloat(place.rating) : null;
   const stars = rating ? Math.round(rating) : 0;
@@ -34,7 +35,7 @@ export function PlaceCard({ place, index }: PlaceCardProps) {
           <div className="absolute inset-0 bg-charcoal-lighter animate-pulse" />
         )}
         <img
-          src={`https://images.unsplash.com/photo-1539650116574-8efeb43e2750?w=600&q=80`}
+          src={imageUrl}
           alt={place.name}
           className={`w-full h-48 object-cover transition-all duration-500 group-hover:scale-110 ${
             imageLoaded ? 'opacity-100' : 'opacity-0'
