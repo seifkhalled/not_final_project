@@ -12,7 +12,7 @@ from ai.orchestrator import TripOrchestrator
 from src.pexels_service import get_place_image_url
 
 app = Flask(__name__)
-CORS(app, origins=os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(","))
+CORS(app, origins=os.environ.get("ALLOWED_ORIGINS", "*").split(","))
 
 orchestrator = TripOrchestrator()
 
